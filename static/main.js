@@ -70,8 +70,19 @@ document.body.addEventListener("mousemove", function(event) {
 });
 
 document.body.addEventListener("mousedown", function(event) {
+	console.log(event);
 	let time = Date.now() / 1000 - delta;
-	send("game/event", [time - lag, x, y, "Kick"]);
+	send("game/event", [time - lag, x, y, "KickMedium"]);
+});
+
+window.addEventListener("keydown", function(event) {
+	console.log(event);
+	let time = Date.now() / 1000 - delta;
+	switch (event.code) {
+	case "Digit1": send("game/event", [time - lag, x, y, "KickShort"]); break;
+	case "Digit2": send("game/event", [time - lag, x, y, "KickMedium"]); break;
+	case "Digit3": send("game/event", [time - lag, x, y, "KickLong"]); break;
+	}
 });
 
 document.getElementById("create").onclick = function() {

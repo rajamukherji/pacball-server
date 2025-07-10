@@ -1,10 +1,11 @@
-import("log/zlog"): log()
 import: glib("gir/GLib")
 import: gobject("gir/GObject")
 import: soup("gir/Soup@3.0")
 import: json("fmt/json")
 import: uuid("util/uuid")
 import: engine("lib/engine")
+
+logger: log("main")
 
 let Server := soup::Server()
 Server:listen_all(8081, nil)
@@ -38,21 +39,8 @@ def MimeTypes := {
 	"ico" is "image/png"
 }
 
-let serve_static_content := for Arg in sys::Args do
-	until Arg = "--no-cache", fun(Message, Path, MimeType) do
-		log::info('Serving {Path} as {MimeType} without cache')
-		let Channel := glib::IOChannel::new_file(Path, "r")
-		Channel:set_encoding(nil)
-		let (_, Content, Length) := Channel:read_to_end
-		Channel:close
-		Message:set_response(MimeType, soup::MemoryUse::copy, Content)
-		Message:set_status(200, nil)
-	on Error do
-		log::error(Error)
-		Message:set_status(404, nil)
-	end
-else
-	fun(Message, Path, MimeType) do
+let serve_static_content := for Arg in Args do
+	until Arg = "--cache-static", fun(Message, Path, MimeType) do
 		log::info('Serving {Path} as {MimeType} with cache')
 		let Content := :({})[Path; Path] do
 			log::info('Reading {Path} into cache')
@@ -62,6 +50,19 @@ else
 			Channel:close
 			Content
 		end
+		Message:set_response(MimeType, soup::MemoryUse::static, Content)
+		Message:set_status(200, nil)
+	on Error do
+		log::error(Error)
+		Message:set_status(404, nil)
+	end
+else
+	fun(Message, Path, MimeType) do
+		log::info('Serving {Path} as {MimeType} without cache')
+		let Channel := glib::IOChannel::new_file(Path, "r")
+		Channel:set_encoding(nil)
+		let (_, Content, Length) := Channel:read_to_end
+		Channel:close
 		Message:set_response(MimeType, soup::MemoryUse::static, Content)
 		Message:set_status(200, nil)
 	on Error do
@@ -110,7 +111,10 @@ let Players := {}
 let Games := {}
 
 fun send_event(Socket, Event, Data) do
-	Socket:send_message(soup::WebsocketDataType::text, glib::Bytes::new(json::encode({Event is Data})))
+	Socket:send_text(json::encode({Event is Data}))
+	:<let Bytes := glib::Bytes::new(json::encode({Event is Data}))
+	Socket:send_message(soup::WebsocketDataType::text, Bytes)
+	Bytes:unref>:
 end
 
 fun start_game(Game) do
@@ -125,14 +129,14 @@ fun start_game(Game) do
 	end
 	let Start := time()
 	var Base := 0
-	glib::timeout_add(0, 250;) do
+	glib::timeout_add(0, 100;) do
 		let Time := time() - Start
 		let State := Engine:predict(Time)
-		print('{State}\n')
+		:>log::info(State)
 		for Player in Players do
 			send_event(Player:socket{}, "game/state", State)
 		end
-		let Rebase := Time - 1
+		let Rebase := Time - 0.5
 		if Rebase > Base then
 			Engine:rebase(Rebase)
 			Base := Rebase
@@ -152,7 +156,7 @@ fun handle_event(Player, Socket, Event, Data) do
 	switch Event: string
 	case "ping" do
 		send_event(Socket, "pong")
-	case "connect" do		
+	case "connect" do
 		if let Game := Player:game then
 			send_event(Socket, "game/join", [Game:id, Game:name])
 			if Game:running = true then
@@ -201,11 +205,13 @@ end
 Server:add_websocket_handler("/connect", nil, nil; Server, Message, Path, Socket) do
 	let Query := Message:get_uri:get_query
 	let Params := glib::uri_parse_params(Query, Query:length, "&", glib::UriParamsFlags::none)
+	print('Params = {Params}\n')
 	log::info('Websocket connection on {Path} -> {Params}')
 	let Player := Players[Params["id"], player]
 	Player:socket := Socket
 	Socket:connect("message"; Socket, Type, Bytes) do
-		let (Event, Data) := first2(json::decode(Bytes:get_data[1]))
+		:>print('Bytes = {Bytes:get_data}\n')
+		let (Event, Data) := first2(json::decode(Bytes:get_data))
 		handle_event(Player, Socket, Event, Data)
 	on Error do
 		log::error(Error)
@@ -220,3 +226,5 @@ on Error do
 	log::error(Error)
 	Socket:close(soup::WebsocketCloseCode::server_error, string(Error))
 end
+
+callcc(0)

@@ -15,7 +15,9 @@ typedef struct game_t game_t;
 typedef enum {
 	ACTION_NONE,
 	ACTION_MOVE,
-	ACTION_KICK
+	ACTION_KICK_SHORT,
+	ACTION_KICK_MEDIUM,
+	ACTION_KICK_LONG
 } action_t;
 
 typedef double double2 __attribute__((vector_size(16)));
@@ -68,16 +70,18 @@ struct player_t {
 
 #define PITCH_WIDTH 180.0
 #define PITCH_HEIGHT 100.0
-#define GOAL_SIZE 20.0
+#define GOAL_SIZE 10.0
 
-#define BALL_RADIUS 1.0
-#define PLAYER_RADIUS 3.0
+#define BALL_RADIUS 0.5
+#define PLAYER_RADIUS 1.0
 
-#define BALL_FRICTION 5.0
-#define BALL_KICK_SPEED 30.0
+#define BALL_FRICTION 1.5
+#define BALL_KICK_SPEED_SHORT 10.0
+#define BALL_KICK_SPEED_MEDIUM 15.0
+#define BALL_KICK_SPEED_LONG 20.0
 
-#define PLAYER_RUN_SPEED 20.0
-#define PLAYER_DRIBBLE_SPEED 10.0
+#define PLAYER_RUN_SPEED 6.0
+#define PLAYER_DRIBBLE_SPEED 3.0
 
 game_t *game() {
 	game_t *Game = new(game_t);
@@ -554,8 +558,8 @@ void game_predict(game_t *Game, double Target) {
 			double2 Segment = HandlerState->Position - PlayerState->Position;
 			State->Ball.Handler = -1;
 			State->Ball.Position = HandlerState->Position + Segment * ((PLAYER_RADIUS + PLAYER_RADIUS + BALL_RADIUS) / (PLAYER_RADIUS + PLAYER_RADIUS));
-			State->Ball.Velocity = Segment * (BALL_KICK_SPEED / (PLAYER_RADIUS + PLAYER_RADIUS));
-			State->Ball.Friction = State->Ball.Velocity * (BALL_FRICTION / BALL_KICK_SPEED);
+			State->Ball.Velocity = Segment * (BALL_KICK_SPEED_MEDIUM / (PLAYER_RADIUS + PLAYER_RADIUS));
+			State->Ball.Friction = State->Ball.Velocity * (BALL_FRICTION / BALL_KICK_SPEED_MEDIUM);
 			HandlerState->Velocity *= (PLAYER_RUN_SPEED / PLAYER_DRIBBLE_SPEED);
 			break;
 		}
@@ -576,12 +580,32 @@ void game_predict(game_t *Game, double Target) {
 				}
 				break;
 			}
-			case ACTION_KICK: {
+			case ACTION_KICK_SHORT: {
 				if (State->Ball.Handler == Event->Player) {
 					State->Ball.Handler = -1;
 					State->Ball.Position = PlayerState->Position + PlayerState->Velocity * ((PLAYER_RADIUS + BALL_RADIUS) / PLAYER_DRIBBLE_SPEED);
-					State->Ball.Velocity = PlayerState->Velocity * (BALL_KICK_SPEED / PLAYER_DRIBBLE_SPEED);
-					State->Ball.Friction = State->Ball.Velocity * (BALL_FRICTION / BALL_KICK_SPEED);
+					State->Ball.Velocity = PlayerState->Velocity * (BALL_KICK_SPEED_SHORT / PLAYER_DRIBBLE_SPEED);
+					State->Ball.Friction = State->Ball.Velocity * (BALL_FRICTION / BALL_KICK_SPEED_SHORT);
+					PlayerState->Velocity *= (PLAYER_RUN_SPEED / PLAYER_DRIBBLE_SPEED);
+				}
+				break;
+			}
+			case ACTION_KICK_MEDIUM: {
+				if (State->Ball.Handler == Event->Player) {
+					State->Ball.Handler = -1;
+					State->Ball.Position = PlayerState->Position + PlayerState->Velocity * ((PLAYER_RADIUS + BALL_RADIUS) / PLAYER_DRIBBLE_SPEED);
+					State->Ball.Velocity = PlayerState->Velocity * (BALL_KICK_SPEED_MEDIUM / PLAYER_DRIBBLE_SPEED);
+					State->Ball.Friction = State->Ball.Velocity * (BALL_FRICTION / BALL_KICK_SPEED_MEDIUM);
+					PlayerState->Velocity *= (PLAYER_RUN_SPEED / PLAYER_DRIBBLE_SPEED);
+				}
+				break;
+			}
+			case ACTION_KICK_LONG: {
+				if (State->Ball.Handler == Event->Player) {
+					State->Ball.Handler = -1;
+					State->Ball.Position = PlayerState->Position + PlayerState->Velocity * ((PLAYER_RADIUS + BALL_RADIUS) / PLAYER_DRIBBLE_SPEED);
+					State->Ball.Velocity = PlayerState->Velocity * (BALL_KICK_SPEED_LONG / PLAYER_DRIBBLE_SPEED);
+					State->Ball.Friction = State->Ball.Velocity * (BALL_FRICTION / BALL_KICK_SPEED_LONG);
 					PlayerState->Velocity *= (PLAYER_RUN_SPEED / PLAYER_DRIBBLE_SPEED);
 				}
 				break;
@@ -616,7 +640,9 @@ ML_TYPE(PlayerT, (), "player");
 ML_ENUM2(ActionT, "action",
 	"None", ACTION_NONE,
 	"Move", ACTION_MOVE,
-	"Kick", ACTION_KICK
+	"KickShort", ACTION_KICK_SHORT,
+	"KickMedium", ACTION_KICK_MEDIUM,
+	"KickLong", ACTION_KICK_LONG
 );
 
 ML_METHOD(GameT) {
