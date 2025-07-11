@@ -1,12 +1,21 @@
 console.log("Hello world!")
 
 let socket = null;
-
 let pitch = document.getElementById("pitch");
 let score1 = document.getElementById("score1");
 let score2 = document.getElementById("score2");
 let gametime = document.getElementById("gametime");
 let ready = document.getElementById("ready");
+
+let createButton = document.getElementById("create-button");
+let joinButton = document.getElementById("join-button");
+let startButton = document.getElementById("start-button");
+let endButton = document.getElementById("end-button");
+let leaveButton = document.getElementById("leave-button");
+
+let joinDialog = document.getElementById("join-dialog");
+let joinTable = document.getElementById("join-table");
+
 let events = {};
 let ping, lag = 0;
 let players = [];
@@ -20,7 +29,7 @@ let base = null;
 let delta = null;
 
 function connect(callback) {
-	socket = new WebSocket(((window.location.protocol === "https:") ? "wss://" : "ws://") + window.location.host + "/connect?id=" + id);
+	socket = new WebSocket(((window.location.protocol === "https:") ? "wss://" : "ws://") + window.location.host + "/connect?id=" + id + "&name=" + encodeURIComponent(name));
 	socket.onmessage = function(message) {
 		let decoded = JSON.parse(message.data);
 		for (type in decoded) {
@@ -44,6 +53,11 @@ if (id === null) {
 	id = Array.from(arr).map(x => x.toString(16).padStart(2, "0")).join("");
 	sessionStorage.setItem("id", id);
 }
+let name = sessionStorage.getItem("name");
+if (name === null) {
+	name = prompt("Player Name");
+	sessionStorage.setItem("name", name);
+}
 
 connect();
 
@@ -58,6 +72,43 @@ function send(event, data) {
 }
 
 window.send = send;
+
+startButton.style.display = "none";
+endButton.style.display = "none";
+leaveButton.style.display = "none";
+
+createButton.onclick = function() {
+	createButton.style.display = "none";
+	joinButton.style.display = "none";
+	send("game/create", {name: prompt("Game Name")});
+};
+
+startButton.onclick = function() {
+	startButton.style.display = "none";
+	endButton.style.display = null;
+	send("game/start", {});
+};
+
+joinButton.onclick = function() {
+	joinDialog.showModal();
+	send("game/list", {});
+};
+
+leaveButton.onclick = function() {
+	createButton.style.display = null
+	joinButton.style.display = null;
+	leaveButton.style.display = "none";
+	send("game/leave", {});
+};
+
+endButton.onclick = function() {
+	send("game/end", {});
+};
+
+events["pong"] = function(data) {
+	lag = (Date.now() - ping) / 2000;
+	//console.log("delay", lag);
+};
 
 window.addEventListener("resize", function(event) {
 	cx = pitch.offsetLeft + 540;
@@ -85,35 +136,39 @@ window.addEventListener("keydown", function(event) {
 	}
 });
 
-document.getElementById("create").onclick = function() {
-	send("game/create", {name: "Game", password: "1"});
-};
-
-document.getElementById("start").onclick = function() {
-	send("game/start", {game: "1"});
-};
-
-document.getElementById("join").onclick = function() {
-	let name = prompt("Player Name");
-	send("game/join", {game: "1", name, password: "1"});
-};
-
-events["pong"] = function(data) {
-	lag = (Date.now() - ping) / 2000;
-	console.log("delay", lag);
-}
-
 logs = document.getElementById("logs");
 
+events["connect"] = function(data) {
+};
+
 events["game/create"] = function(data) {
+	startButton.style.display = null;
 	logs.appendChild(document.createTextNode("Game created\n"));
-}
+};
 
 events["game/list"] = function(data) {
+	let child;
+	while ((child = joinTable.firstChild)) joinTable.removeChild(child);
+	data.forEach(game => {
+		joinTable.appendChild(create("tr",
+			create("td", game.name),
+			create("td", game.count.toString() + " players"),
+			create("td", create("button", "Join", {"on-click": function() {
+				joinDialog.close();
+				send("game/join", {game: game.id, password: ""});
+			}}))
+		));
+	});
+	if (joinDialog.open) setTimeout(() => send("game/list", {}), 1000);
 };
 
 events["game/join"] = function(data) {
-	logs.appendChild(document.createTextNode(`Player ${data[0]} joined team ${data[1]}\n`));
+	logs.appendChild(document.createTextNode(`Player ${data[0]} joined.\n`));
+	if (data[1]) {
+		createButton.style.display = "none";
+		joinButton.style.display = "none";
+		leaveButton.style.display = null;
+	}
 };
 
 function tick() {
@@ -162,7 +217,9 @@ events["game/start"] = function(data) {
 		if (i == index) {
 			label.textContent = "☺";
 		} else {
-			label.textContent = i.toString();
+			let names = name.split(" ");
+			let initials = names[0][0].toUpperCase() + names[names.length - 1][0].toUpperCase();
+			label.textContent = initials;
 		}
 		element.appendChild(label);
 		pitch.appendChild(element);
@@ -176,7 +233,16 @@ events["game/start"] = function(data) {
 	interval = setInterval(tick, 50);
 };
 
+events["game/leave"] = function(data) {
+	logs.appendChild(document.createTextNode(`Player ${data[0]} left.\n`));
+	if (interval != null) clearInterval(interval);
+	interval = null;
+};
+
 events["game/state"] = function(data) {
+	createButton.style.display = "none";
+	joinButton.style.display = "none";
+	leaveButton.style.display = null;
 	base = data[0];
 	delta = Date.now() / 1000 - base;
 	score = data[1];
@@ -201,4 +267,14 @@ events["game/state"] = function(data) {
 		player.dx = playerData[2];
 		player.dy = playerData[3];
 	});
+};
+
+events["game/end"] = function(data) {
+	startButton.style.display = "none";
+	endButton.style.display = "none";
+	leaveButton.style.display = "none";
+	createButton.style.display = null
+	joinButton.style.display = null;
+	if (interval != null) clearInterval(interval);
+	interval = null;
 };
