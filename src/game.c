@@ -388,7 +388,7 @@ ML_METHOD("rebase", GameT, MLRealT) {
 	return (ml_value_t *)Game;
 }
 
-void ml_library_entry0(ml_value_t **Slot) {
+ML_LIBRARY_ENTRY0(game) {
 #include "game_init.c"
 	stringmap_insert(GameT->Exports, "player", PlayerT);
 	stringmap_insert(GameT->Exports, "action", ActionT);

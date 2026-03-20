@@ -75,6 +75,8 @@ struct player_t {
 #define BALL_RADIUS 0.5
 #define PLAYER_RADIUS 1.0
 
+#define PLAYER_DIAMETER (PLAYER_RADIUS + PLAYER_RADIUS)
+
 #define BALL_FRICTION 1.5
 #define BALL_KICK_SPEED_SHORT 10.0
 #define BALL_KICK_SPEED_MEDIUM 15.0
@@ -297,34 +299,15 @@ void game_predict(game_t *Game, double Target) {
 				PlayerState = State->Players;
 			}
 			for (; --Count >= 0; ++PlayerState) {
-				if (PlayerState->Velocity[0] || PlayerState->Velocity[1]) {
-					//double2 PlayerInitial = PlayerState->Position;
-					//double2 PlayerFinal = PlayerInitial + Delta * PlayerState->Velocity;
-					// TODO: Rough check for possible collision
-
-					double2 DX = HandlerState->Position - PlayerState->Position;
-					double2 DV = HandlerState->Velocity - PlayerState->Velocity;
+				// TODO: Rough check for possible collision
+				double2 DX = HandlerState->Position - PlayerState->Position;
+				double2 DV = HandlerState->Velocity - PlayerState->Velocity;
+				if (((DX[0] - PLAYER_DIAMETER) / DV[0] < Delta) && ((DX[1] - PLAYER_DIAMETER) / DV[1] < Delta)) {
 					double T = solve_quadratic(
-						dot(DX, DX) - (PLAYER_RADIUS + PLAYER_RADIUS) * (PLAYER_RADIUS + PLAYER_RADIUS),
+						dot(DX, DX) - PLAYER_DIAMETER * PLAYER_DIAMETER,
 						2 * dot(DX, DV),
 						dot(DV, DV)
 					);
-					if (Delta > T) {
-						Delta = T;
-						Update = UPDATE_PLAYER_TACKLE;
-						UpdatePlayer = PlayerState - State->Players;
-					}
-				} else {
-					// TODO: Rough check for possible collision
-
-					double2 DX = HandlerState->Position - PlayerState->Position;
-					double2 DV = HandlerState->Velocity;
-					double T = solve_quadratic(
-						dot(DX, DX) - (PLAYER_RADIUS + PLAYER_RADIUS) * (PLAYER_RADIUS + PLAYER_RADIUS),
-						2 * dot(DX, DV),
-						dot(DV, DV)
-					);
-					//printf("Collision with ball at %g\n", T);
 					if (Delta > T) {
 						Delta = T;
 						Update = UPDATE_PLAYER_TACKLE;
@@ -407,12 +390,10 @@ void game_predict(game_t *Game, double Target) {
 			// Check for ball colliding with player
 			PlayerState = State->Players;
 			for (int I = NumPlayers; --I >= 0; ++PlayerState) {
-				if (PlayerState->Velocity[0] || PlayerState->Velocity[1]) {
-					//double2 PlayerInitial = PlayerState->Position;
-					//double2 PlayerFinal = PlayerInitial + Delta * PlayerState->Velocity;
-					// TODO: Rough check for possible collision
-					double2 DX = State->Ball.Position - PlayerState->Position;
-					double2 DV = State->Ball.Velocity - PlayerState->Velocity;
+				// TODO: Rough check for possible collision
+				double2 DX = State->Ball.Position - PlayerState->Position;
+				double2 DV = State->Ball.Velocity - PlayerState->Velocity;
+				if ((DX[0] / DV[0] < T) && (DX[1] / DV[1] < T)) {
 					double2 F = State->Ball.Friction;
 					double T = solve_quartic(
 						dot(DX, DX) - (BALL_RADIUS + PLAYER_RADIUS) * (BALL_RADIUS + PLAYER_RADIUS),
@@ -421,24 +402,6 @@ void game_predict(game_t *Game, double Target) {
 						-dot(DV, F),
 						dot(F, F) / 4
 					);
-					if (Delta > T) {
-						Delta = T;
-						Update = UPDATE_PLAYER_BALL;
-						UpdatePlayer = PlayerState - State->Players;
-					}
-				} else {
-					// TODO: Rough check for possible collision
-					double2 DX = State->Ball.Position - PlayerState->Position;
-					double2 DV = State->Ball.Velocity;
-					double2 F = State->Ball.Friction;
-					double T = solve_quartic(
-						dot(DX, DX) - (BALL_RADIUS + PLAYER_RADIUS) * (BALL_RADIUS + PLAYER_RADIUS),
-						2 * dot(DX, DV),
-						dot(DV, DV) - dot(DX, F),
-						-dot(DV, F),
-						dot(F, F) / 4
-					);
-					//printf("Collision with ball at %g\n", T);
 					if (Delta > T) {
 						Delta = T;
 						Update = UPDATE_PLAYER_BALL;
@@ -451,22 +414,21 @@ void game_predict(game_t *Game, double Target) {
 			PlayerState = State->Players;
 			for (int I = NumPlayers; --I >= 0; ++PlayerState) {
 				if (PlayerState->Velocity[0] || PlayerState->Velocity[1]) {
-					//double2 PlayerInitial = PlayerState->Position;
-					//double2 PlayerFinal = PlayerInitial + Delta * PlayerState->Velocity;
 					// TODO: Rough check for possible collision
-
 					double2 DX = State->Ball.Position - PlayerState->Position;
 					double2 DV = -PlayerState->Velocity;
-					double T = solve_quadratic(
-						dot(DX, DX) - (BALL_RADIUS + PLAYER_RADIUS) * (BALL_RADIUS + PLAYER_RADIUS),
-						2 * dot(DX, DV),
-						dot(DV, DV)
-					);
-					//printf("Collision with ball at %g\n", T);
-					if (Delta > T) {
-						Delta = T;
-						Update = UPDATE_PLAYER_BALL;
-						UpdatePlayer = PlayerState - State->Players;
+					if (((DX[0] - (BALL_RADIUS + PLAYER_RADIUS)) / DV[0] < Delta) && ((DX[1] - (BALL_RADIUS + PLAYER_RADIUS)) / DV[1] < Delta)) {
+						double T = solve_quadratic(
+							dot(DX, DX) - (BALL_RADIUS + PLAYER_RADIUS) * (BALL_RADIUS + PLAYER_RADIUS),
+							2 * dot(DX, DV),
+							dot(DV, DV)
+						);
+						//printf("Collision with ball at %g\n", T);
+						if (Delta > T) {
+							Delta = T;
+							Update = UPDATE_PLAYER_BALL;
+							UpdatePlayer = PlayerState - State->Players;
+						}
 					}
 				}
 			}
@@ -557,8 +519,8 @@ void game_predict(game_t *Game, double Target) {
 			player_state_t *HandlerState = State->Players + State->Ball.Handler;
 			double2 Segment = HandlerState->Position - PlayerState->Position;
 			State->Ball.Handler = -1;
-			State->Ball.Position = HandlerState->Position + Segment * ((PLAYER_RADIUS + PLAYER_RADIUS + BALL_RADIUS) / (PLAYER_RADIUS + PLAYER_RADIUS));
-			State->Ball.Velocity = Segment * (BALL_KICK_SPEED_MEDIUM / (PLAYER_RADIUS + PLAYER_RADIUS));
+			State->Ball.Position = HandlerState->Position + Segment * ((PLAYER_RADIUS + PLAYER_RADIUS + BALL_RADIUS) / PLAYER_DIAMETER);
+			State->Ball.Velocity = Segment * (BALL_KICK_SPEED_MEDIUM / PLAYER_DIAMETER);
 			State->Ball.Friction = State->Ball.Velocity * (BALL_FRICTION / BALL_KICK_SPEED_MEDIUM);
 			HandlerState->Velocity *= (PLAYER_RUN_SPEED / PLAYER_DRIBBLE_SPEED);
 			break;
@@ -731,7 +693,7 @@ ML_METHOD("rebase", GameT, MLRealT) {
 	return Args[1];
 }
 
-void ml_library_entry0(ml_value_t **Slot) {
+ML_LIBRARY_ENTRY0(engine) {
 #include "engine_init.c"
 	stringmap_insert(GameT->Exports, "player", PlayerT);
 	stringmap_insert(GameT->Exports, "action", ActionT);
